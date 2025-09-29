@@ -10,13 +10,13 @@ import os
 import winsound
 
 # Baca URL dari file CSV
-input_file = "filtered_links.csv"
+input_file = "../../data/raw/filtered_links.csv"
 urls = pd.read_csv(input_file)["URL"].tolist()
 start_index = 7089  # Indeks awal untuk scraping
 urls = urls[start_index:-1]  # Scrape sampai URL ke-n
 
 # Nama file output CSV
-output_file = "hasil_scraping_rumah123.csv"
+output_file = "../../data/processed/hasil_scraping_rumah123.csv"
 
 # Jika file hasil scraping sudah ada, baca URL yang sudah di-scrape
 if os.path.exists(output_file):

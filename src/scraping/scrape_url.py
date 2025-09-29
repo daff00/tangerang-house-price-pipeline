@@ -25,7 +25,7 @@ base_url = "https://www.rumah123.com/jual/cari/?location=tangerang&page=1"
 wait = WebDriverWait(driver, 10)
 
 # Nama file output CSV
-output_file = "filtered_links.csv"
+output_file = "../../data/raw/filtered_links.csv"
 
 # Jika file CSV sudah ada, baca data lama
 if os.path.exists(output_file):
