@@ -935,3 +935,79 @@ class ModelEvaluator:
                                 ('font-weight', 'bold'),
                                 ('text-align', 'center')]
                     }]).hide(axis='index'))
+
+    @staticmethod
+    def plot_tuned_models_feature_importance(tuned_models, tuned_metrics, feature_names, figsize=(15, 6)):
+        """
+        Specialized function to plot feature importance for Optuna-tuned models only
+        """
+        # Filter only tuned models
+        tuned_indices = [i for i, metrics in enumerate(tuned_metrics) 
+                        if 'Optuna' in metrics.get('model_name', '')]
+        
+        if not tuned_indices:
+            print("No Optuna-tuned models found")
+            return
+        
+        # Create subplots
+        n_models = len(tuned_indices)
+        fig, axes = plt.subplots(1, n_models, figsize=figsize)
+        
+        if n_models == 1:
+            axes = [axes]
+        
+        for idx, (model_idx, ax) in enumerate(zip(tuned_indices, axes)):
+            model = tuned_models[model_idx]
+            metrics = tuned_metrics[model_idx]
+            model_name = metrics.get('model_name', f'Tuned_Model_{idx+1}')
+            test_r2 = metrics.get('test_r2', 0)
+            
+            # Get feature importance
+            importance_values, importance_labels = ModelEvaluator._get_feature_importance(model, feature_names)
+            
+            if importance_values is not None and len(importance_values) > 0:
+                # Get top 10 features
+                top_n = 10
+                top_indices = np.argsort(importance_values)[-top_n:][::-1]
+                top_features = [importance_labels[j] for j in top_indices]
+                top_importance = importance_values[top_indices]
+                
+                # Create horizontal bar plot
+                y_pos = np.arange(len(top_features))
+                bars = ax.barh(y_pos, top_importance, align='center', alpha=0.8, 
+                            color='lightgreen' if 'Random Forest' in model_name else 'lightblue')
+                ax.set_yticks(y_pos)
+                ax.set_yticklabels(top_features)
+                ax.invert_yaxis()
+                ax.set_xlabel('Feature Importance Score')
+                ax.set_title(f'{model_name}\nTest R²: {test_r2:.4f}', fontweight='bold')
+                
+                # Add value labels
+                for bar in bars:
+                    width = bar.get_width()
+                    ax.text(width + width*0.01, bar.get_y() + bar.get_height()/2, 
+                        f'{width:.3f}', ha='left', va='center', fontsize=9)
+            else:
+                ax.text(0.5, 0.5, 'Feature importance\nnot available', 
+                    ha='center', va='center', transform=ax.transAxes)
+                ax.set_title(model_name)
+        
+        plt.tight_layout()
+        plt.show()
+
+    @staticmethod
+    def _get_feature_importance(model, feature_names):
+        """
+        Extract feature importance based on model type (internal helper method)
+        """
+        try:
+            if hasattr(model, 'feature_importances_'):
+                # Tree-based models (Random Forest, XGBoost, etc.)
+                importance_values = model.feature_importances_
+                importance_labels = feature_names
+                return importance_values, importance_labels
+            else:
+                return None, None
+        except Exception as e:
+            print(f"Error extracting feature importance: {e}")
+            return None, None
