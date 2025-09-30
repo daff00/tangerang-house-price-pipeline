@@ -35,8 +35,8 @@ The final **XGBoost** model, tuned with Optuna, was the top performer.
 
 | Metric | Test Set Performance |
 | :--- | :--- |
-| **R-squared (R²)** | `0.XX` (e.g., 0.85) |
-| **RMSE (in Rupiah)** | `Rp XXX,XXX,XXX` |
+| **R-squared (R²)** | `0.9044`  |
+| **RMSE (in Rupiah)** | `Rp 1,188,284,228` |
 
 The most influential features in predicting house prices were identified as:
 * `Luas Tanah` (Land Area)
@@ -74,7 +74,7 @@ This is the simplest way to run the application.
 
 1.  **Clone the repository:**
     ```bash
-    git clone [https://github.com/your-username/tangerang-house-price-pipeline.git](https://github.com/your-username/tangerang-house-price-pipeline.git)
+    git clone [https://github.com/daff00/tangerang-house-price-pipeline.git](https://github.com/daff00/tangerang-house-price-pipeline.git)
     ```
 2.  **Create and activate a Python virtual environment:**
     > This project was developed and tested using **Python 3.9**.
@@ -146,4 +146,4 @@ tangerang-house-price-pipeline/
 ## 📬 Contact
 
 * **Daffa Kaisha Pratama Chandra** - [daffakpc21@gmail.com](mailto:your.email@daffakpc21@gmail.com)
-* **LinkedIn:** [https://www.linkedin.com/in/your-linkedin-profile/](https://www.linkedin.com/in/your-linkedin-profile/)
+* **LinkedIn:** [https://www.linkedin.com/in/daffakaisha/](https://www.linkedin.com/in/daffakaisha/)
