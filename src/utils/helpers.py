@@ -3,11 +3,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.preprocessing import OrdinalEncoder
-from sklearn.model_selection import cross_validate, cross_val_predict, learning_curve
-from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import cross_validate, learning_curve
 from sklearn.ensemble import RandomForestRegressor
 from xgboost import XGBRegressor
-from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_percentage_error
+from sklearn.metrics import r2_score
 import optuna
 import warnings
 warnings.filterwarnings('ignore')
@@ -492,53 +491,96 @@ class ModelEvaluator:
     """Simplified model evaluation class following Gemini's approach"""
     
     @staticmethod
-    def evaluate_model(model, X_train, y_train, X_test, y_test, model_name="Model"):
+    def evaluate_model(model, X_train, y_train, X_test, y_test, model_name="Model", 
+                   validation_size=0.2, cv_folds=5, random_state=42):
         """
-        Performs 5-fold cross-validation, fits a model, and evaluates it on train and test sets.
-        Returns metrics dictionary with predictions for all sets.
+        Enhanced model evaluation with train/validation/test splits and cross-validation.
         """
-        # Define metrics for cross-validation
-        scoring = {
-            'r2': 'r2', 
-            'rmse': 'neg_root_mean_squared_error', 
-            'mape': 'neg_mean_absolute_percentage_error'
-        }
+        from sklearn.model_selection import cross_val_score, cross_validate, train_test_split
+        from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_percentage_error
+        import numpy as np
         
-        # Perform cross-validation with estimators to get validation predictions
-        cv_results = cross_validate(model, X_train, y_train, cv=5, scoring=scoring, 
-                                  n_jobs=-1, return_estimator=True)
+        # --- Create validation split ---
+        X_tr, X_val, y_tr, y_val = train_test_split(
+            X_train, y_train, test_size=validation_size, random_state=random_state
+        )
         
-        # Get cross-validation predictions for validation set
-        cv_predictions = cross_val_predict(model, X_train, y_train, cv=5, n_jobs=-1)
+        # --- Cross-Validation ---
+        cv_results = cross_validate(
+            model, X_tr, y_tr, 
+            cv=cv_folds,
+            scoring=['r2', 'neg_mean_squared_error'],
+            return_train_score=True
+        )
         
-        # Fit the model on the entire training data
-        model.fit(X_train, y_train)
+        # CV metrics
+        cv_train_r2 = cv_results['train_r2'].mean()
+        cv_val_r2 = cv_results['test_r2'].mean()
+        cv_train_rmse = np.sqrt(-cv_results['train_neg_mean_squared_error']).mean()
+        cv_val_rmse = np.sqrt(-cv_results['test_neg_mean_squared_error']).mean()
         
-        # Make predictions on train and test sets
-        y_pred_train = model.predict(X_train)
-        y_pred_test = model.predict(X_test)
+        # --- Model Training ---
+        model.fit(X_tr, y_tr)
         
-        # Store all metrics in a dictionary
+        # --- Predictions on all sets (log scale) ---
+        y_pred_train_log = model.predict(X_tr)
+        y_pred_val_log = model.predict(X_val)
+        y_pred_test_log = model.predict(X_test)
+        
+        # --- Convert to Original Scale (Rupiah) ---
+        y_tr_actual = np.expm1(y_tr)
+        y_val_actual = np.expm1(y_val)
+        y_test_actual = np.expm1(y_test)
+        
+        y_pred_tr_actual = np.expm1(y_pred_train_log)
+        y_pred_val_actual = np.expm1(y_pred_val_log)
+        y_pred_test_actual = np.expm1(y_pred_test_log)
+        
+        # --- Comprehensive Metrics ---
         metrics = {
-            'Model': model_name,
-            'Train_R2': r2_score(y_train, y_pred_train),
-            'Validation_R2': cv_results['test_r2'].mean(),
-            'Test_R2': r2_score(y_test, y_pred_test),
-            'Train_RMSE': np.sqrt(mean_squared_error(y_train, y_pred_train)),
-            'Validation_RMSE': -cv_results['test_rmse'].mean(),
-            'Test_RMSE': np.sqrt(mean_squared_error(y_test, y_pred_test)),
-            'Train_MAPE': mean_absolute_percentage_error(y_train, y_pred_train),
-            'Validation_MAPE': -cv_results['test_mape'].mean(),
-            'Test_MAPE': mean_absolute_percentage_error(y_test, y_pred_test),
-            'fitted_model': model,
-            'predictions': {
-                'train': y_pred_train,
-                'validation': cv_predictions,
-                'test': y_pred_test
-            }
+            # R² scores (log scale)
+            'train_r2': r2_score(y_tr, y_pred_train_log),
+            'val_r2': r2_score(y_val, y_pred_val_log),
+            'test_r2': r2_score(y_test, y_pred_test_log),
+            'cv_train_r2': cv_train_r2,
+            'cv_val_r2': cv_val_r2,
+            
+            # RMSE (Rupiah scale)
+            'train_rmse': np.sqrt(mean_squared_error(y_tr_actual, y_pred_tr_actual)),
+            'val_rmse': np.sqrt(mean_squared_error(y_val_actual, y_pred_val_actual)),
+            'test_rmse': np.sqrt(mean_squared_error(y_test_actual, y_pred_test_actual)),
+            'cv_train_rmse': cv_train_rmse,
+            'cv_val_rmse': cv_val_rmse,
+            
+            # MAPE (Rupiah scale)
+            'train_mape': mean_absolute_percentage_error(y_tr_actual, y_pred_tr_actual),
+            'val_mape': mean_absolute_percentage_error(y_val_actual, y_pred_val_actual),
+            'test_mape': mean_absolute_percentage_error(y_test_actual, y_pred_test_actual),
+            
+            # Additional metrics
+            'train_mae': np.mean(np.abs(y_tr_actual - y_pred_tr_actual)),
+            'val_mae': np.mean(np.abs(y_val_actual - y_pred_val_actual)),
+            'test_mae': np.mean(np.abs(y_test_actual - y_pred_test_actual)),
+            
+            # Model info
+            'model_name': model_name,
+            'cv_folds': cv_folds
         }
         
-        return metrics
+        # --- Store predictions ---
+        predictions = {
+            'train_log': y_pred_train_log,
+            'val_log': y_pred_val_log,
+            'test_log': y_pred_test_log,
+            'train_actual': y_pred_tr_actual,
+            'val_actual': y_pred_val_actual,
+            'test_actual': y_pred_test_actual,
+            'y_train_actual': y_tr_actual,
+            'y_val_actual': y_val_actual,
+            'y_test_actual': y_test_actual
+        }
+        
+        return model, metrics, predictions
     
     @staticmethod
     def tune_with_optuna(model_name, X_train, y_train, n_trials=50):
@@ -587,76 +629,92 @@ class ModelEvaluator:
     
     @staticmethod
     def create_results_table(metrics_list):
-        """Create a beautiful results table with grouped Train/Validation/Test"""
-        # Create a new list to store reformatted data
-        reformatted_data = []
-        
+        """
+        Create results table from the evaluate_model format
+        """
+        if not metrics_list:
+            return pd.DataFrame(), pd.DataFrame().style
+
+        records = []
         for metrics in metrics_list:
-            model_name = metrics['Model']
+            model_name = metrics.get('model_name', 'Unknown')
             
-            # Add all datasets for this model
-            reformatted_data.append({
-                'Model': model_name,
-                'Dataset': 'Train',
-                'R2': metrics['Train_R2'],
-                'RMSE': metrics['Train_RMSE'],
-                'MAPE': metrics['Train_MAPE']
+            # Add records for each dataset (using the exact keys from your data)
+            records.append({
+                'Model': model_name, 
+                'Data Set': 'Train',
+                'R2': metrics.get('train_r2'), 
+                'RMSE': metrics.get('train_rmse'), 
+                'MAPE': metrics.get('train_mape')
             })
-            
-            reformatted_data.append({
-                'Model': model_name,
-                'Dataset': 'Validation',
-                'R2': metrics['Validation_R2'],
-                'RMSE': metrics['Validation_RMSE'],
-                'MAPE': metrics['Validation_MAPE']
+            records.append({
+                'Model': model_name, 
+                'Data Set': 'Validation',
+                'R2': metrics.get('val_r2'), 
+                'RMSE': metrics.get('val_rmse'), 
+                'MAPE': metrics.get('val_mape')
             })
-            
-            reformatted_data.append({
-                'Model': model_name,
-                'Dataset': 'Test',
-                'R2': metrics['Test_R2'],
-                'RMSE': metrics['Test_RMSE'],
-                'MAPE': metrics['Test_MAPE']
+            records.append({
+                'Model': model_name, 
+                'Data Set': 'Test',
+                'R2': metrics.get('test_r2'), 
+                'RMSE': metrics.get('test_rmse'), 
+                'MAPE': metrics.get('test_mape')
             })
         
-        df = pd.DataFrame(reformatted_data)
-        
-        # Apply conditional formatting for better visual hierarchy
-        def highlight_dataset(val):
-            if val == 'Train':
-                return 'background-color: #e8f5e8'  # Light green
-            elif val == 'Validation':
-                return 'background-color: #e3f2fd'  # Light blue  
-            elif val == 'Test':
-                return 'background-color: #fff3e0'  # Light orange
-            return ''
-        
-        styled_df = df.style.format({
-            'R2': '{:.4f}',
-            'RMSE': '{:.4f}',
-            'MAPE': '{:.4f}'
-        }).applymap(highlight_dataset, subset=['Dataset'])\
-        .set_properties(**{
-            'border': '1px solid #dee2e6'
-        }).set_table_styles([
-            {
-                'selector': 'th',
-                'props': [('background-color', '#343a40'), 
+        # Create DataFrame
+        df = pd.DataFrame(records)
+        df_wide = df.set_index(['Model', 'Data Set'])
+
+        # Apply styling
+        styled_df = (
+            df_wide.style
+            .format({
+                'R2': '{:.4f}',
+                'RMSE': '{:,.0f}',
+                'MAPE': '{:.2%}'
+            }, na_rep='–')
+            .background_gradient(cmap='viridis', subset=['R2'])
+            .background_gradient(cmap='Reds_r', subset=['RMSE'])
+            .background_gradient(cmap='Blues_r', subset=['MAPE'])
+            .set_properties(**{
+                'border': '1px solid #dee2e6',
+                'padding': '8px',
+                'text-align': 'center'
+            })
+            .set_table_styles([
+                {
+                    'selector': 'th',
+                    'props': [
+                        ('background-color', '#2c3e50'),
                         ('color', 'white'),
                         ('font-weight', 'bold'),
-                        ('text-align', 'center')]
-            },
-            {
-                'selector': 'td',
-                'props': [('text-align', 'center')]
-            },
-            {
-                'selector': 'td:first-child',
-                'props': [('text-align', 'left', 'font-weight', 'bold')]
-            }
-        ])
-        
-        return df, styled_df
+                        ('text-align', 'center'),
+                        ('padding', '10px'),
+                        ('font-family', 'Segoe UI, Arial, sans-serif')
+                    ]
+                },
+                {
+                    'selector': 'td',
+                    'props': [
+                        ('text-align', 'center'),
+                        ('font-family', 'Segoe UI, Arial, sans-serif')
+                    ]
+                },
+                {
+                    'selector': 'table',
+                    'props': [
+                        ('border-collapse', 'collapse'),
+                        ('margin', '10px 0'),
+                        ('box-shadow', '0 2px 8px rgba(0,0,0,0.1)'),
+                        ('border-radius', '6px'),
+                        ('overflow', 'hidden')
+                    ]
+                }
+            ], overwrite=False)
+        )
+
+        return df_wide, styled_df
     
     @staticmethod
     def plot_convergence(study, model_name):
@@ -708,9 +766,14 @@ class ModelEvaluator:
         plt.show()
     
     @staticmethod
-    def plot_predictions_comparison(metrics_list, y_train, y_test, set_type='test'):
+    def plot_predictions_comparison(metrics_list, predictions_list=None, set_type='test'):
         """
         Plot actual vs predicted values for all models for a specific set
+        
+        Parameters:
+            metrics_list: List of metrics dictionaries from evaluate_model
+            predictions_list: List of predictions dictionaries from evaluate_model
+            set_type: 'train', 'validation', or 'test'
         """
         n_models = len(metrics_list)
         n_cols = 2
@@ -723,39 +786,52 @@ class ModelEvaluator:
             axes = [axes]
         
         for i, metrics in enumerate(metrics_list):
-            model_name = metrics['Model']
+            model_name = metrics.get('model_name', f'Model_{i+1}')
             
+            # Get the corresponding predictions
+            if predictions_list and i < len(predictions_list):
+                predictions = predictions_list[i]
+            else:
+                # If predictions_list not provided, skip this model
+                continue
+            
+            # Select the appropriate dataset
             if set_type == 'train':
-                y_actual = y_train
-                y_pred = metrics['predictions']['train']
+                y_actual = predictions.get('y_train_actual')
+                y_pred = predictions.get('train_actual')
                 title_suffix = 'Train'
             elif set_type == 'validation':
-                y_actual = y_train
-                y_pred = metrics['predictions']['validation']
+                y_actual = predictions.get('y_val_actual')
+                y_pred = predictions.get('val_actual')
                 title_suffix = 'Validation'
             else:  # test
-                y_actual = y_test
-                y_pred = metrics['predictions']['test']
+                y_actual = predictions.get('y_test_actual')
+                y_pred = predictions.get('test_actual')
                 title_suffix = 'Test'
             
-            # Convert back from log if needed
-            if y_actual.max() < 100:  # Assuming log transformation
-                y_actual_plot = np.expm1(y_actual)
-                y_pred_plot = np.expm1(y_pred)
-            else:
-                y_actual_plot = y_actual
-                y_pred_plot = y_pred
+            # Skip if data is not available
+            if y_actual is None or y_pred is None:
+                print(f"Warning: {set_type} set data not available for {model_name}")
+                continue
             
-            sns.regplot(x=y_actual_plot, y=y_pred_plot, scatter_kws={"alpha": 0.5}, 
-                       line_kws={"color": "red"}, ax=axes[i])
+            # Create the regression plot
+            sns.regplot(x=y_actual, y=y_pred, scatter_kws={"alpha": 0.5}, 
+                    line_kws={"color": "red"}, ax=axes[i])
             axes[i].set_title(f'{model_name} - {title_suffix} Set')
-            axes[i].set_xlabel('Actual Price')
-            axes[i].set_ylabel('Predicted Price')
+            axes[i].set_xlabel('Actual Price (IDR)')
+            axes[i].set_ylabel('Predicted Price (IDR)')
             
-            # Add R² to plot
-            r2 = r2_score(y_actual_plot, y_pred_plot)
+            # Add R² to plot (use the stored metric)
+            r2_key = f'{set_type}_r2' if set_type != 'validation' else 'val_r2'
+            r2 = metrics.get(r2_key, r2_score(y_actual, y_pred))
             axes[i].text(0.05, 0.95, f'R² = {r2:.4f}', transform=axes[i].transAxes, 
                         bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
+            
+            # Add perfect prediction line
+            min_val = min(y_actual.min(), y_pred.min())
+            max_val = max(y_actual.max(), y_pred.max())
+            axes[i].plot([min_val, max_val], [min_val, max_val], 'k--', alpha=0.7, label='Perfect Prediction')
+            axes[i].legend()
         
         # Remove empty subplots
         for j in range(len(metrics_list), len(axes)):
@@ -765,52 +841,97 @@ class ModelEvaluator:
         plt.show()
     
     @staticmethod
-    def create_prediction_samples(metrics_list, y_train, y_test, n_samples=5):
+    def create_prediction_samples(metrics_list, predictions_list, n_samples=5):
         """
-        Create sample prediction comparisons for all models and sets
+        Create clean, readable sample prediction comparisons for all models
+        
+        Returns a dictionary with well-formatted DataFrames for each dataset
         """
         samples = {}
         
-        for metrics in metrics_list:
-            model_name = metrics['Model']
+        for i, (metrics, predictions) in enumerate(zip(metrics_list, predictions_list)):
+            model_name = metrics.get('model_name', f'Model_{i+1}')
             
-            # Convert back from log if needed
-            if y_train.max() < 100:
-                y_train_actual = np.expm1(y_train)
-                y_test_actual = np.expm1(y_test)
-                train_pred = np.expm1(metrics['predictions']['train'])
-                val_pred = np.expm1(metrics['predictions']['validation'])
-                test_pred = np.expm1(metrics['predictions']['test'])
-            else:
-                y_train_actual = y_train
-                y_test_actual = y_test
-                train_pred = metrics['predictions']['train']
-                val_pred = metrics['predictions']['validation']
-                test_pred = metrics['predictions']['test']
+            # Create clean sample DataFrames
+            train_data = []
+            val_data = []
+            test_data = []
             
-            # Create sample DataFrames
-            train_sample = pd.DataFrame({
-                'Actual_Train': y_train_actual[:n_samples],
-                f'Predicted_{model_name}': train_pred[:n_samples],
-                f'Difference_{model_name}': train_pred[:n_samples] - y_train_actual[:n_samples]
-            })
+            # Helper function to safely get data
+            def get_sample_data(actual_key, pred_key, data_list, max_samples):
+                if actual_key in predictions and pred_key in predictions:
+                    actual_data = predictions[actual_key]
+                    pred_data = predictions[pred_key]
+                    
+                    # Convert to list/array for indexing
+                    if hasattr(actual_data, 'values'):
+                        actual_data = actual_data.values
+                    if hasattr(pred_data, 'values'):
+                        pred_data = pred_data.values
+                    
+                    # Ensure we have data to work with
+                    if len(actual_data) > 0 and len(pred_data) > 0:
+                        for j in range(min(max_samples, len(actual_data))):
+                            actual_val = actual_data[j]
+                            pred_val = pred_data[j]
+                            error_pct = ((pred_val - actual_val) / actual_val * 100) if actual_val != 0 else 0
+                            
+                            data_list.append({
+                                'Sample': j + 1,
+                                'Actual': actual_val,
+                                'Predicted': pred_val,
+                                'Difference': pred_val - actual_val,
+                                'Error %': error_pct
+                            })
             
-            val_sample = pd.DataFrame({
-                'Actual_Validation': y_train_actual[:n_samples],
-                f'Predicted_{model_name}': val_pred[:n_samples],
-                f'Difference_{model_name}': val_pred[:n_samples] - y_train_actual[:n_samples]
-            })
-            
-            test_sample = pd.DataFrame({
-                'Actual_Test': y_test_actual[:n_samples],
-                f'Predicted_{model_name}': test_pred[:n_samples],
-                f'Difference_{model_name}': test_pred[:n_samples] - y_test_actual[:n_samples]
-            })
+            # Get data for each dataset
+            get_sample_data('y_train_actual', 'train_actual', train_data, n_samples)
+            get_sample_data('y_val_actual', 'val_actual', val_data, n_samples)
+            get_sample_data('y_test_actual', 'test_actual', test_data, n_samples)
             
             samples[model_name] = {
-                'train': train_sample,
-                'validation': val_sample,
-                'test': test_sample
+                'train': pd.DataFrame(train_data) if train_data else pd.DataFrame(),
+                'validation': pd.DataFrame(val_data) if val_data else pd.DataFrame(),
+                'test': pd.DataFrame(test_data) if test_data else pd.DataFrame()
             }
         
         return samples
+    
+    @staticmethod
+    def display_prediction_samples(samples, format_currency=True):
+        """
+        Display prediction samples in a clean, readable format
+        """
+        for model_name, datasets in samples.items():
+            print(f"\n{'='*60}")
+            print(f"📊 PREDICTION SAMPLES - {model_name.upper()}")
+            print(f"{'='*60}")
+            
+            for dataset_name, df in datasets.items():
+                if not df.empty:
+                    print(f"\n{dataset_name.upper()} SET:")
+                    
+                    # Format the DataFrame for display
+                    display_df = df.copy()
+                    
+                    if format_currency:
+                        # Format currency columns
+                        currency_cols = ['Actual', 'Predicted', 'Difference']
+                        for col in currency_cols:
+                            if col in display_df.columns:
+                                display_df[col] = display_df[col].apply(lambda x: f"IDR {x:,.0f}" if pd.notnull(x) else "N/A")
+                        
+                        # Format percentage column
+                        if 'Error %' in display_df.columns:
+                            display_df['Error %'] = display_df['Error %'].apply(lambda x: f"{x:.1f}%" if pd.notnull(x) else "N/A")
+                    
+                    display(display_df.style.set_properties(**{
+                        'text-align': 'center',
+                        'border': '1px solid #ddd',
+                        'padding': '5px'
+                    }).set_table_styles([{
+                        'selector': 'th',
+                        'props': [('background-color', '#f0f0f0'), 
+                                ('font-weight', 'bold'),
+                                ('text-align', 'center')]
+                    }]).hide(axis='index'))
