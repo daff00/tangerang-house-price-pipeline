@@ -113,7 +113,7 @@ with tab3:
                 kecamatan_encoded[f'kec_{selected_kecamatan}'] = 1  # Set kecamatan yang dipilih ke 1
 
                 #Load Ordinal Encoder
-                with open("../../models/encoder_data_listrik.pkl", "rb") as f:
+                with open("models/encoder_data_listrik.pkl", "rb") as f:
                     watt_enc = pickle.load(f)
 
                 # Gabungkan input user ke DataFrame
@@ -143,13 +143,13 @@ with tab3:
                 df_final = df_final[expected_columns]
 
                 # Load scaler
-                with open("../../models/scaler.pkl", "rb") as f:
+                with open("models/scaler.pkl", "rb") as f:
                     scaler = pickle.load(f)
                 
                 df_scaled = scaler.transform(df_final)
 
                 # Load model
-                with open("../../models/xgboost_optuna.pkl", "rb") as f:
+                with open("models/xgboost_optuna.pkl", "rb") as f:
                     model_xgb = pickle.load(f)
 
                 # Prediksi harga rumah dalam bentuk log
@@ -176,7 +176,7 @@ with tab4:
     st.title("🔎 Prediksi Spesifikasi Rumah Berdasarkan Harga dan Lokasi")
 
     # Load dataset rumah
-    df_rumah = pd.read_csv("../../data/processed/Data Harga Rumah Kabupaten Tangerang.csv")
+    df_rumah = pd.read_csv("data/processed/Data Harga Rumah Kabupaten Tangerang.csv")
 
     # Buat kategori range harga
     def categorize_price(harga):
