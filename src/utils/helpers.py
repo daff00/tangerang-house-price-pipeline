@@ -150,7 +150,7 @@ class DataPreprocessor:
         # Kecamatan one-hot encoding
         df_encoded = pd.get_dummies(df_encoded, columns=['Kecamatan'], prefix='kec')
         
-        return df_encoded
+        return df_encoded, watt_enc
     
     @staticmethod
     def apply_log_transformation(df, columns=None):
