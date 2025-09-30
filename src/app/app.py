@@ -142,12 +142,18 @@ with tab3:
 
                 df_final = df_final[expected_columns]
 
+                # Load scaler
+                with open("../../models/scaler.pkl", "rb") as f:
+                    scaler = pickle.load(f)
+                
+                df_scaled = scaler.transform(df_final)
+
                 # Load model
                 with open("../../models/xgboost_optuna.pkl", "rb") as f:
                     model_xgb = pickle.load(f)
 
                 # Prediksi harga rumah dalam bentuk log
-                predicted_price_log = model_xgb.predict(df_final)
+                predicted_price_log = model_xgb.predict(df_scaled)
 
                 # Konversi kembali ke harga asli
                 predicted_price = np.expm1(predicted_price_log) 
