@@ -118,6 +118,8 @@ This is the simplest way to run the application.
     ```bash
     streamlit run src/app/app.py
     ```
+### Method 3: Live Streamlit App
+You can access the Streamlit App here: [https://tangerang-house-price-pipeline.streamlit.app/](https://tangerang-house-price-pipeline.streamlit.app/)
 
 ---
 
