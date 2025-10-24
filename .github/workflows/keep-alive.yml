@@ -1,0 +1,15 @@
+name: Keep Streamlit App Alive
+
+on:
+  schedule:
+    # Runs every 4 hours
+    - cron: "0 */4 * * *"
+  workflow_dispatch: # Allows you to run this workflow manually from the Actions tab
+
+jobs:
+  ping-app:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send GET request to Streamlit app
+        # Replace with your app's URL
+        run: curl -s "https://your-app-name.streamlit.app" > /dev/null
